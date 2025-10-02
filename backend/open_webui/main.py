@@ -1391,187 +1391,379 @@ async def embeddings(
     return await generate_embeddings(request, form_data, user)
 
 
+# @app.post("/api/chat/completions")
+# @app.post("/api/v1/chat/completions")  # Experimental: Compatibility with OpenAI API
+# async def chat_completion(
+#     request: Request,
+#     form_data: dict,
+#     user=Depends(get_verified_user),
+# ):
+#     if not request.app.state.MODELS:
+#         await get_all_models(request, user=user)
+#
+#     model_id = form_data.get("model", None)
+#     model_item = form_data.pop("model_item", {})
+#     tasks = form_data.pop("background_tasks", None)
+#
+#     metadata = {}
+#     try:
+#         if not model_item.get("direct", False):
+#             if model_id not in request.app.state.MODELS:
+#                 raise Exception("Model not found")
+#
+#             model = request.app.state.MODELS[model_id]
+#             model_info = Models.get_model_by_id(model_id)
+#
+#             # Check if user has access to the model
+#             if not BYPASS_MODEL_ACCESS_CONTROL and (
+#                 user.role != "admin" or not BYPASS_ADMIN_ACCESS_CONTROL
+#             ):
+#                 try:
+#                     check_model_access(user, model)
+#                 except Exception as e:
+#                     raise e
+#         else:
+#             model = model_item
+#             model_info = None
+#
+#             request.state.direct = True
+#             request.state.model = model
+#
+#         model_info_params = (
+#             model_info.params.model_dump() if model_info and model_info.params else {}
+#         )
+#
+#         # Chat Params
+#         stream_delta_chunk_size = form_data.get("params", {}).get(
+#             "stream_delta_chunk_size"
+#         )
+#         reasoning_tags = form_data.get("params", {}).get("reasoning_tags")
+#
+#         # Model Params
+#         if model_info_params.get("stream_delta_chunk_size"):
+#             stream_delta_chunk_size = model_info_params.get("stream_delta_chunk_size")
+#
+#         if model_info_params.get("reasoning_tags") is not None:
+#             reasoning_tags = model_info_params.get("reasoning_tags")
+#
+#         metadata = {
+#             "user_id": user.id,
+#             "chat_id": form_data.pop("chat_id", None),
+#             "message_id": form_data.pop("id", None),
+#             "session_id": form_data.pop("session_id", None),
+#             "filter_ids": form_data.pop("filter_ids", []),
+#             "tool_ids": form_data.get("tool_ids", None),
+#             "tool_servers": form_data.pop("tool_servers", None),
+#             "files": form_data.get("files", None),
+#             "features": form_data.get("features", {}),
+#             "variables": form_data.get("variables", {}),
+#             "model": model,
+#             "direct": model_item.get("direct", False),
+#             "params": {
+#                 "stream_delta_chunk_size": stream_delta_chunk_size,
+#                 "reasoning_tags": reasoning_tags,
+#                 "function_calling": (
+#                     "native"
+#                     if (
+#                         form_data.get("params", {}).get("function_calling") == "native"
+#                         or model_info_params.get("function_calling") == "native"
+#                     )
+#                     else "default"
+#                 ),
+#             },
+#         }
+#
+#         if metadata.get("chat_id") and (user and user.role != "admin"):
+#             if metadata["chat_id"] != "local":
+#                 chat = Chats.get_chat_by_id_and_user_id(metadata["chat_id"], user.id)
+#                 if chat is None:
+#                     raise HTTPException(
+#                         status_code=status.HTTP_404_NOT_FOUND,
+#                         detail=ERROR_MESSAGES.DEFAULT(),
+#                     )
+#
+#         request.state.metadata = metadata
+#         form_data["metadata"] = metadata
+#
+#     except Exception as e:
+#         log.debug(f"Error processing chat metadata: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=str(e),
+#         )
+#
+#     async def process_chat(request, form_data, user, metadata, model):
+#         try:
+#             form_data, metadata, events = await process_chat_payload(
+#                 request, form_data, user, metadata, model
+#             )
+#
+#             response = await chat_completion_handler(request, form_data, user)
+#             if metadata.get("chat_id") and metadata.get("message_id"):
+#                 try:
+#                     Chats.upsert_message_to_chat_by_id_and_message_id(
+#                         metadata["chat_id"],
+#                         metadata["message_id"],
+#                         {
+#                             "model": model_id,
+#                         },
+#                     )
+#                 except:
+#                     pass
+#
+#             return await process_chat_response(
+#                 request, response, form_data, user, metadata, model, events, tasks
+#             )
+#         except asyncio.CancelledError:
+#             log.info("Chat processing was cancelled")
+#             try:
+#                 event_emitter = get_event_emitter(metadata)
+#                 await event_emitter(
+#                     {"type": "chat:tasks:cancel"},
+#                 )
+#             except Exception as e:
+#                 pass
+#         except Exception as e:
+#             log.debug(f"Error processing chat payload: {e}")
+#             if metadata.get("chat_id") and metadata.get("message_id"):
+#                 # Update the chat message with the error
+#                 try:
+#                     Chats.upsert_message_to_chat_by_id_and_message_id(
+#                         metadata["chat_id"],
+#                         metadata["message_id"],
+#                         {
+#                             "error": {"content": str(e)},
+#                         },
+#                     )
+#
+#                     event_emitter = get_event_emitter(metadata)
+#                     await event_emitter(
+#                         {
+#                             "type": "chat:message:error",
+#                             "data": {"error": {"content": str(e)}},
+#                         }
+#                     )
+#                     await event_emitter(
+#                         {"type": "chat:tasks:cancel"},
+#                     )
+#
+#                 except:
+#                     pass
+#         finally:
+#             try:
+#                 if mcp_clients := metadata.get("mcp_clients"):
+#                     for client in mcp_clients:
+#                         await client.disconnect()
+#             except Exception as e:
+#                 log.debug(f"Error cleaning up: {e}")
+#                 pass
+#
+#     if (
+#         metadata.get("session_id")
+#         and metadata.get("chat_id")
+#         and metadata.get("message_id")
+#     ):
+#         # Asynchronous Chat Processing
+#         task_id, _ = await create_task(
+#             request.app.state.redis,
+#             process_chat(request, form_data, user, metadata, model),
+#             id=metadata["chat_id"],
+#         )
+#         return {"status": True, "task_id": task_id}
+#     else:
+#         return await process_chat(request, form_data, user, metadata, model)
+# Django backend URL (use Docker service name in production)
+DJANGO_API_URL = os.getenv("DJANGO_API_URL", "http://django:8000")
+
+
 @app.post("/api/chat/completions")
-@app.post("/api/v1/chat/completions")  # Experimental: Compatibility with OpenAI API
+@app.post("/api/v1/chat/completions")
 async def chat_completion(
     request: Request,
     form_data: dict,
     user=Depends(get_verified_user),
 ):
-    if not request.app.state.MODELS:
-        await get_all_models(request, user=user)
+    """
+    MODIFIED: Redirect all chat completions to Django backend
+    Django handles: RAG, Database, Ollama, Streaming
+    """
 
+    log.info(f"Redirecting chat to Django - User: {user.id}, Model: {form_data.get('model')}")
+
+    # Extract metadata (preserve OpenWebUI's format)
     model_id = form_data.get("model", None)
-    model_item = form_data.pop("model_item", {})
-    tasks = form_data.pop("background_tasks", None)
+    chat_id = form_data.get("chat_id", None)
+    message_id = form_data.get("id", None)
+    stream = form_data.get("stream", False)
 
-    metadata = {}
+    # Build metadata object (OpenWebUI format)
+    metadata = {
+        "user_id": user.id,
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "session_id": form_data.get("session_id", None),
+        "filter_ids": form_data.get("filter_ids", []),
+        "tool_ids": form_data.get("tool_ids", None),
+        "files": form_data.get("files", None),
+        "features": form_data.get("features", {}),
+        "variables": form_data.get("variables", {}),
+    }
+
+    # Add metadata to form_data
+    form_data["metadata"] = metadata
+
+    # Prepare headers for Django
+    headers = {
+        "Content-Type": "application/json",
+        "X-User-ID": str(user.id),
+        "X-User-Email": user.email,
+        "X-User-Role": user.role,
+        "X-User-Name": user.name,
+    }
+
+    # Forward session/auth token if present
+    if "Authorization" in request.headers:
+        headers["Authorization"] = request.headers["Authorization"]
+
     try:
-        if not model_item.get("direct", False):
-            if model_id not in request.app.state.MODELS:
-                raise Exception("Model not found")
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(300.0, connect=10.0),
+            follow_redirects=True
+        ) as client:
 
-            model = request.app.state.MODELS[model_id]
-            model_info = Models.get_model_by_id(model_id)
+            if stream:
+                # Handle streaming response
+                return await _forward_streaming(
+                    client, form_data, headers, chat_id, message_id
+                )
+            else:
+                # Handle regular JSON response
+                return await _forward_json(
+                    client, form_data, headers
+                )
 
-            # Check if user has access to the model
-            if not BYPASS_MODEL_ACCESS_CONTROL and (
-                user.role != "admin" or not BYPASS_ADMIN_ACCESS_CONTROL
-            ):
-                try:
-                    check_model_access(user, model)
-                except Exception as e:
-                    raise e
-        else:
-            model = model_item
-            model_info = None
-
-            request.state.direct = True
-            request.state.model = model
-
-        model_info_params = (
-            model_info.params.model_dump() if model_info and model_info.params else {}
+    except httpx.TimeoutException:
+        log.error(f"Django timeout for chat_id={chat_id}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Request timeout"
         )
 
-        # Chat Params
-        stream_delta_chunk_size = form_data.get("params", {}).get(
-            "stream_delta_chunk_size"
+    except httpx.ConnectError:
+        log.error(f"Cannot connect to Django at {DJANGO_API_URL}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backend service unavailable. Please try again."
         )
-        reasoning_tags = form_data.get("params", {}).get("reasoning_tags")
-
-        # Model Params
-        if model_info_params.get("stream_delta_chunk_size"):
-            stream_delta_chunk_size = model_info_params.get("stream_delta_chunk_size")
-
-        if model_info_params.get("reasoning_tags") is not None:
-            reasoning_tags = model_info_params.get("reasoning_tags")
-
-        metadata = {
-            "user_id": user.id,
-            "chat_id": form_data.pop("chat_id", None),
-            "message_id": form_data.pop("id", None),
-            "session_id": form_data.pop("session_id", None),
-            "filter_ids": form_data.pop("filter_ids", []),
-            "tool_ids": form_data.get("tool_ids", None),
-            "tool_servers": form_data.pop("tool_servers", None),
-            "files": form_data.get("files", None),
-            "features": form_data.get("features", {}),
-            "variables": form_data.get("variables", {}),
-            "model": model,
-            "direct": model_item.get("direct", False),
-            "params": {
-                "stream_delta_chunk_size": stream_delta_chunk_size,
-                "reasoning_tags": reasoning_tags,
-                "function_calling": (
-                    "native"
-                    if (
-                        form_data.get("params", {}).get("function_calling") == "native"
-                        or model_info_params.get("function_calling") == "native"
-                    )
-                    else "default"
-                ),
-            },
-        }
-
-        if metadata.get("chat_id") and (user and user.role != "admin"):
-            if metadata["chat_id"] != "local":
-                chat = Chats.get_chat_by_id_and_user_id(metadata["chat_id"], user.id)
-                if chat is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=ERROR_MESSAGES.DEFAULT(),
-                    )
-
-        request.state.metadata = metadata
-        form_data["metadata"] = metadata
 
     except Exception as e:
-        log.debug(f"Error processing chat metadata: {e}")
+        log.exception(f"Error forwarding to Django: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )
 
-    async def process_chat(request, form_data, user, metadata, model):
+
+async def _forward_streaming(
+    client: httpx.AsyncClient,
+    form_data: dict,
+    headers: dict,
+    chat_id: str,
+    message_id: str
+) -> StreamingResponse:
+    """Forward streaming request to Django"""
+
+    async def stream_from_django():
         try:
-            form_data, metadata, events = await process_chat_payload(
-                request, form_data, user, metadata, model
-            )
+            async with client.stream(
+                "POST",
+                f"{DJANGO_API_URL}/api/chat/completions",
+                json=form_data,
+                headers=headers
+            ) as response:
 
-            response = await chat_completion_handler(request, form_data, user)
-            if metadata.get("chat_id") and metadata.get("message_id"):
-                try:
-                    Chats.upsert_message_to_chat_by_id_and_message_id(
-                        metadata["chat_id"],
-                        metadata["message_id"],
-                        {
-                            "model": model_id,
-                        },
-                    )
-                except:
-                    pass
+                # Check for errors before streaming
+                if response.status_code != 200:
+                    error_body = await response.aread()
+                    log.error(f"Django error {response.status_code}: {error_body}")
 
-            return await process_chat_response(
-                request, response, form_data, user, metadata, model, events, tasks
-            )
-        except asyncio.CancelledError:
-            log.info("Chat processing was cancelled")
-            try:
-                event_emitter = get_event_emitter(metadata)
-                await event_emitter(
-                    {"type": "chat:tasks:cancel"},
-                )
-            except Exception as e:
-                pass
-        except Exception as e:
-            log.debug(f"Error processing chat payload: {e}")
-            if metadata.get("chat_id") and metadata.get("message_id"):
-                # Update the chat message with the error
-                try:
-                    Chats.upsert_message_to_chat_by_id_and_message_id(
-                        metadata["chat_id"],
-                        metadata["message_id"],
-                        {
-                            "error": {"content": str(e)},
-                        },
-                    )
-
-                    event_emitter = get_event_emitter(metadata)
-                    await event_emitter(
-                        {
-                            "type": "chat:message:error",
-                            "data": {"error": {"content": str(e)}},
+                    error_data = json.dumps({
+                        "error": {
+                            "message": error_body.decode('utf-8', errors='ignore'),
+                            "type": "django_error",
+                            "code": response.status_code
                         }
-                    )
-                    await event_emitter(
-                        {"type": "chat:tasks:cancel"},
-                    )
+                    })
+                    yield f"data: {error_data}\n\n".encode()
+                    yield b"data: [DONE]\n\n"
+                    return
 
-                except:
-                    pass
-        finally:
+                # Stream chunks from Django
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+
+        except asyncio.CancelledError:
+            log.info(f"Stream cancelled for chat_id={chat_id}")
+            # Notify Django about cancellation
             try:
-                if mcp_clients := metadata.get("mcp_clients"):
-                    for client in mcp_clients:
-                        await client.disconnect()
-            except Exception as e:
-                log.debug(f"Error cleaning up: {e}")
+                await client.post(
+                    f"{DJANGO_API_URL}/api/chat/cancel",
+                    json={"chat_id": chat_id, "message_id": message_id},
+                    headers=headers,
+                    timeout=5.0
+                )
+            except:
                 pass
+            raise
 
-    if (
-        metadata.get("session_id")
-        and metadata.get("chat_id")
-        and metadata.get("message_id")
-    ):
-        # Asynchronous Chat Processing
-        task_id, _ = await create_task(
-            request.app.state.redis,
-            process_chat(request, form_data, user, metadata, model),
-            id=metadata["chat_id"],
+        except Exception as e:
+            log.exception(f"Streaming error: {e}")
+            error_data = json.dumps({
+                "error": {"message": str(e), "type": "stream_error"}
+            })
+            yield f"data: {error_data}\n\n".encode()
+            yield b"data: [DONE]\n\n"
+
+    return StreamingResponse(
+        stream_from_django(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+async def _forward_json(
+    client: httpx.AsyncClient,
+    form_data: dict,
+    headers: dict
+) -> JSONResponse:
+    """Forward non-streaming request to Django"""
+
+    response = await client.post(
+        f"{DJANGO_API_URL}/api/chat/completions",
+        json=form_data,
+        headers=headers
+    )
+
+    if response.status_code != 200:
+        error_detail = response.text
+        try:
+            error_json = response.json()
+            error_detail = error_json.get("detail", error_json.get("error", error_detail))
+        except:
+            pass
+
+        log.error(f"Django error {response.status_code}: {error_detail}")
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=error_detail
         )
-        return {"status": True, "task_id": task_id}
-    else:
-        return await process_chat(request, form_data, user, metadata, model)
+
+    return JSONResponse(content=response.json())
 
 
 # Alias for chat_completion (Legacy)

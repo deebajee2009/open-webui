@@ -62,11 +62,11 @@ math {
 }
 
 input::placeholder {
-	direction: auto;
+	direction: right;
 }
 
 textarea::placeholder {
-	direction: auto;
+	direction: right;
 }
 
 .input-prose {
@@ -769,4 +769,25 @@ body {
 .pm-li-drop-outdent {
 	position: relative;
 	z-index: 0;
+}
+
+
+* {
+    direction: rtl;
+}
+
+body, html {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Fix input fields */
+input, textarea {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Fix flex layouts that might break */
+.flex-row {
+    flex-direction: row-reverse;
 }

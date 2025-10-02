@@ -104,7 +104,17 @@
 					}}
 				/>
 			{:else}
-				<div class="flex flex-row justify-center gap-3 @sm:gap-3.5 w-fit px-5 max-w-xl">
+				<div class="custom-header" style="text-align: center; margin: 2rem auto;">
+			    <img
+			        src="/static/pogc.png"
+			        alt="POGC Logo"
+			        style="max-width: 300px; height: auto; margin-bottom: 1rem;"
+			    />
+			    <h2 style="font-size: 1.5rem; font-weight: bold; direction: rtl;">
+			        سامانه هوش مصنوعی شرکت نفت و گاز پارس
+			    </h2>
+				</div>
+				<!-- <div class="flex flex-row justify-center gap-3 @sm:gap-3.5 w-fit px-5 max-w-xl">
 					<div class="flex shrink-0 justify-center">
 						<div class="flex -space-x-4 mb-0.5" in:fade={{ duration: 100 }}>
 							{#each models as model, modelIdx}
@@ -157,7 +167,7 @@
 							{$i18n.t('Hello, {{name}}', { name: $user?.name })}
 						{/if}
 					</div>
-				</div>
+				</div> -->
 
 				<div class="flex mt-1 mb-2">
 					<div in:fade={{ duration: 100, delay: 50 }}>
@@ -242,7 +252,7 @@
 			<FolderPlaceholder folder={$selectedFolder} />
 		</div>
 	{:else}
-		<div class="mx-auto max-w-2xl font-primary mt-2" in:fade={{ duration: 200, delay: 200 }}>
+		<!-- <div class="mx-auto max-w-2xl font-primary mt-2" in:fade={{ duration: 200, delay: 200 }}>
 			<div class="mx-5">
 				<Suggestions
 					suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??
@@ -253,6 +263,6 @@
 					{onSelect}
 				/>
 			</div>
-		</div>
+		</div> -->
 	{/if}
 </div>

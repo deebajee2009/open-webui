@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  openwebui:
+    build:
+      context: .  # Build from the current directory (where Dockerfile is)
+      dockerfile: Dockerfile.dev
+
+    container_name: openwebui
+    ports:
+      - "8080:8080"  # Map host port 3000 to container port 8080
+    volumes:
+      - openwebui-data:/app/backend/data  # Persist data (e.g., user settings, chats)
+    env_file:
+      - .env  # Loads all environment variables from the specified .env file
+    restart: unless-stopped
+    networks:
+      - pogc-ai
+
+
+volumes:
+  openwebui-data:
+
+networks:
+  pogc-ai:
+    external: true
